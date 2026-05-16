@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Stealth Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --bg: #030712;
+    --primary: #0ea5e9;
+    --green: #10b981;
+    --red: #ef4444;
+    --card: rgba(17, 24, 39, 0.7);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Rajdhani', sans-serif; }
+
+body {
+    background-color: var(--bg);
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.15) 0px, transparent 50%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.controller-box {
+    width: 90%;
+    max-width: 400px;
+    background: var(--card);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 30px;
+    padding: 30px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.header { text-align: center; margin-bottom: 30px; }
+.header h1 { font-family: 'Orbitron', sans-serif; font-size: 18px; letter-spacing: 2px; color: var(--primary); }
+
+.bot-engine {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 20px;
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 30px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 80px;
+    height: 40px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #1f2937;
+    transition: .4s;
+    border-radius: 40px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 32px; width: 32px;
+    left: 4px; bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+}
+input:checked + .slider { background-color: var(--primary); box-shadow: 0 0 20px rgba(14, 165, 233, 0.4); }
+input:checked + .slider:before { transform: translateX(40px); }
+
+.status-label { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: #9ca3af; }
+
+.history-title { font-size: 14px; color: #9ca3af; margin-bottom: 10px; display: flex; justify-content: space-between; }
+.table-container { width: 100%; border-radius: 15px; overflow: hidden; background: rgba(0,0,0,0.2); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: rgba(255,255,255,0.05); padding: 10px; color: #6b7280; font-weight: 500; text-align: left; }
+td { padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.02); }
+
+.res-big { color: var(--green); }
+.res-small { color: var(--red); }
+.num-circle { 
+    display: inline-block; width: 22px; height: 22px; 
+    line-height: 22px; text-align: center; 
+    border-radius: 50%; background: rgba(255,255,255,0.1); 
+    font-size: 12px; font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<div class="controller-box">
+    <div class="header">
+        <h1>AI SYSTEM CONTROL</h1>
+    </div>
+
+    <div class="bot-engine">
+        <span class="status-label" id="statusText">Bot Deactivated</span>
+        <label class="switch">
+            <input type="checkbox" id="botSwitch">
+            <span class="slider"></span>
+        </label>
+        <span style="font-size: 11px; color: #4b5563;">Status: <span id="onlineDot" style="color: var(--red);">● Offline</span></span>
+    </div>
+
+    <div class="history-title">
+        <span>Recent History</span>
+        <span id="timer" style="color: var(--primary);">00s</span>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Num</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody id="historyBody">
+                <!-- Data will load here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// ================== CONFIGURATION ==================
+const BOT_TOKEN = '8928497138:AAHLx1KW10F-gOIQ_s7qKfGDmVWIaQupgEA'; 
+const CHAT_ID = '-1003749654939';
+const API = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json";
+// ===================================================
+
+let lastPeriod = "";
+let currentPred = null;
+let isBotActive = false;
+let alreadySignaled = false;
+
+// Statistics Tracking
+let totalSignals = 0;
+let totalWins = 0;
+let totalLosses = 0;
+let sessionDetails = [];
+
+const getNextP = p => p ? (BigInt(p) + 1n).toString() : "---";
+
+async function sendTelegram(msg) {
+    if (!isBotActive) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}&parse_mode=HTML`);
+    } catch (e) {}
+}
+
+async function sendHistoryReport() {
+    let reportMsg = `📊 <b>WORK HISTORY REPORT</b>\n━━━━━━━━━━━━━━\n`;
+    reportMsg += sessionDetails.join("\n");
+    reportMsg += `\n━━━━━━━━━━━━━━\n`;
+    reportMsg += `Total Signals: <b>${totalSignals}</b>\n`;
+    reportMsg += `Total Win: <b>${totalWins} ✅</b>\n`;
+    reportMsg += `Total Loss: <b>${totalLosses} ❌</b>\n`;
+    reportMsg += `━━━━━━━━━━━━━━`;
+    
+    await sendTelegram(reportMsg);
+    
+    // Reset counters for next 10 signals
+    totalSignals = 0;
+    totalWins = 0;
+    totalLosses = 0;
+    sessionDetails = [];
+}
+
+async function updateHistory() {
+    try {
+        const res = await fetch(API);
+        const j = await res.json();
+        if (j.code === 0) {
+            const list = j.data.list;
+            const latest = list[0];
+            
+            // Result logic
+            if (currentPred && latest.issueNumber === currentPred.period) {
+                const n = parseInt(latest.number);
+                const actual = n > 4 ? "BIG" : "SMALL";
+                const isWin = currentPred.signal === actual;
+                
+                // Track stats
+                totalSignals++;
+                if(isWin) totalWins++; else totalLosses++;
+                sessionDetails.push(`${latest.issueNumber.slice(-3)}: ${isWin ? "✅ WIN" : "❌ LOSS"}`);
+
+                sendTelegram(`📊 <b>RESULT REPORT</b>\n━━━━━━━━━━━━━━\nPeriod: <code>${latest.issueNumber}</code>\nNumber: <b>${n}</b>\nResult: <b>${actual}</b>\nStatus: ${isWin ? "✅ WIN" : "❌ LOSS"}\n━━━━━━━━━━━━━━`);
+                
+                currentPred = null;
+
+                // Check if 10 signals reached
+                if (totalSignals >= 10) {
+                    await sendHistoryReport();
+                }
+            }
+
+            if (latest.issueNumber !== lastPeriod) {
+                lastPeriod = latest.issueNumber;
+                alreadySignaled = false;
+                renderTable(list.slice(0, 5));
+            }
+            document.getElementById('onlineDot').innerHTML = "● Online";
+            document.getElementById('onlineDot').style.color = "var(--green)";
+        }
+    } catch (e) {}
+}
+
+function renderTable(data) {
+    const body = document.getElementById('historyBody');
+    body.innerHTML = data.map(item => {
+        const n = parseInt(item.number);
+        const res = n > 4 ? "BIG" : "SMALL";
+        const resClass = n > 4 ? "res-big" : "res-small";
+        return `<tr>
+            <td>${item.issueNumber.slice(-4)}</td>
+            <td><span class="num-circle">${n}</span></td>
+            <td class="${resClass}">${res}</td>
+        </tr>`;
+    }).join('');
+}
+
+function processAnalysis() {
+    fetch(API).then(r => r.json()).then(j => {
+        const list = j.data.list.slice(0, 4).map(x => +x.number).reverse();
+        const diff = Math.abs((list[0] + list[1]) - (list[2] + list[3]));
+        const signal = (diff % 2 === 0) ? "BIG" : "SMALL";
+        const target = getNextP(lastPeriod);
+        
+        const amount = Math.floor(Math.random() * 11) + 10; 
+
+        currentPred = { period: target, signal: signal };
+
+        sendTelegram(`🚀 <b>NEW SIGNAL RECEIVED</b>\n━━━━━━━━━━━━━━\nPeriod: <code>${target}</code>\nSignal: <b>${signal}</b>\nBet Amount: <b>${amount} TK</b>\n━━━━━━━━━━━━━━`);
+    });
+}
+
+document.getElementById('botSwitch').addEventListener('change', function(e) {
+    isBotActive = e.target.checked;
+    const txt = document.getElementById('statusText');
+    if (isBotActive) {
+        txt.textContent = "Bot Activated";
+        txt.style.color = "var(--primary)";
+        sendTelegram("🤖 <b>System Online.</b> Signals will be sent here.");
+    } else {
+        txt.textContent = "Bot Deactivated";
+        txt.style.color = "#9ca3af";
+    }
+});
+
+setInterval(() => {
+    updateHistory();
+    const sec = new Date().getSeconds() % 30;
+    const rem = 30 - sec;
+    document.getElementById('timer').textContent = (rem < 10 ? "0" : "") + rem + "s";
+
+    if (isBotActive && rem <= 22 && rem >= 15 && !alreadySignaled) {
+        processAnalysis();
+        alreadySignaled = true;
+    }
+}, 1000);
+
+</script>
+</body>
+</html>
